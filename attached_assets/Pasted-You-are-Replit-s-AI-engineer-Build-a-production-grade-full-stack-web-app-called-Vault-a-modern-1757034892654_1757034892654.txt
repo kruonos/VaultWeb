@@ -1,0 +1,129 @@
+You are Replit’s AI engineer. Build a production-grade full-stack web app called **Vault**: a modern, mobile-ready file storage website that supports uploading, organizing, previewing, and downloading any common file type (PDF, images, audio, video, docs).
+
+## Tech stack
+- **Frontend:** React + TypeScript + Vite, React Router, Tailwind CSS + shadcn/ui components. Include a responsive grid/list explorer, drag-and-drop, and PWAs (service worker + manifest).
+- **Backend:** Node.js (>=20) + Express. Validation with Zod. Security with Helmet + CORS. Logging with morgan. Rate limiting with express-rate-limit.
+- **Auth:** Email/password (bcrypt) + JWT (httpOnly cookies). Optional Google OAuth (env-gated).
+- **DB/ORM:** Prisma. Use SQLite in dev; Postgres in prod (DATABASE_URL). Seed an admin user.
+- **Storage:** S3-compatible object storage (e.g., AWS S3/Cloudflare R2/MinIO) via presigned URLs for **direct-to-bucket** upload/download. Provide a **local filesystem** fallback for Replit/dev (`/data/storage`) toggled by `STORAGE_DRIVER=s3|local`.
+
+## Core features (must have)
+1. **Upload any file** (pdf, jpg/png/webp, mp3, wav, mp4, mov, doc/x, xls/x, csv, txt, zip, etc.)
+   - Drag-and-drop and file picker
+   - **Progress bar** per file and overall queue
+   - Large file support with chunked/multipart uploads using S3 presigned multipart; ability to cancel/retry a chunk
+   - Client-side MIME/size validation; server-side re-validation
+2. **Previews / Players**
+   - **PDF reader** using PDF.js with page thumbnails, search, and “open in new tab”
+   - **Image viewer** with zoom/pan, EXIF read (if present), and next/prev in folder
+   - **Audio player** (HTML5) with playlist, scrub, and background play
+   - **Video player** (HTML5) with scrubbing, captions (if .vtt present), and support for HTTP Range requests
+3. **File management**
+   - Create/rename/move/copy/delete **folders** and files
+   - Breadcrumbs + folder tree sidebar; grid/list toggle with sortable columns (name, size, type, modified)
+   - Multi-select (Shift/Ctrl), **keyboard shortcuts** (e.g., F2 rename, Del to trash, Ctrl+Shift+N new folder)
+   - **Search** (filename, extension, type) + filters (type, size, date)
+   - **Trash/Recycle Bin** with restore and auto-purge after N days (configurable)
+   - **Batch download** as ZIP (server streams ZIP to avoid memory spikes)
+4. **Sharing**
+   - Create **share links** per file/folder with expiry and optional password
+   - Toggle download allowed/preview-only
+5. **Downloads**
+   - Single and multi-file downloads
+   - Server streams with proper `Content-Type`, `Content-Disposition`, and range support
+6. **Modern theming & UX**
+   - **Themes:** Light, Dim (gray), and **Pure Black (AMOLED)**
+   - System preference detection + manual toggle (persist to user profile)
+   - Mobile-first layout, safe-area insets, bottom nav actions on small screens
+   - WCAG 2.1 AA: focus rings, ARIA labels, skip links, reduced-motion support
+
+## Nice-to-have (implement if time allows)
+- File **thumbnails** (images via sharp; video poster via ffmpeg if available; graceful fallback if not)
+- **Tags**/labels on files and folders; quick filters by tag
+- **Activity log** (who uploaded/renamed/moved)
+- **Per-user quotas** and usage meter
+- **Internationalization** (en, pt-BR) with a toggle
+
+## Data model (Prisma)
+- `User { id, email(unique), passwordHash, name, role('admin'|'user'), createdAt }`
+- `Folder { id, name, parentId(nullable→Folder), ownerId→User, createdAt, updatedAt }`
+- `File { id, name, ext, mime, size, storageKey, checksum(Optional), ownerId→User, folderId→Folder, createdAt, updatedAt }`
+- `ShareLink { id, resourceType('file'|'folder'), resourceId, passwordHash(nullable), expiresAt(nullable), allowDownload(boolean), createdBy→User, createdAt }`
+- `AuditLog { id, userId, action, targetType('file'|'folder'), targetId, meta(Json), createdAt }`
+
+**Integrity rules**
+- Unique `(name, folderId, ownerId)` for files/folders (soft-conflict: append “(2)” pattern)
+- Cascade delete to Trash (soft delete with `deletedAt`) before permanent purge
+
+## REST API (JWT auth unless public share link)
+Base: `/api`
+- **Auth:** `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
+- **Folders:** `GET /folders/:id`, `POST /folders` (name, parentId), `PATCH /folders/:id` (rename/move), `DELETE /folders/:id` (to trash)
+- **Files (metadata):** `GET /files/:id`, `PATCH /files/:id` (rename/move), `DELETE /files/:id` (to trash)
+- **Upload (S3 flow):**
+  - `POST /upload/init` → returns multipart uploadId + presigned URLs per part
+  - `POST /upload/complete` → finalizes multipart and creates File record
+  - Local fallback: `POST /upload/local` (multer) with progress events via SSE/WebSocket
+- **Download/Stream:** `GET /files/:id/download` (signed redirect if S3; stream if local); supports Range
+- **Search:** `GET /search?q=&type=&ext=&limit=&cursor=`
+- **Trash:** `GET /trash`, `POST /trash/restore` (ids), `POST /trash/purge` (admin or after TTL)
+- **Shares:** `POST /shares` (resource, expiresAt, password, allowDownload), `GET /s/:id` (public resolve), `POST /s/:id/auth` (password), `GET /s/:id/list`, `GET /s/:id/download/:fileId`
+- **Me/Quota:** `GET /me/usage`
+
+## Frontend pages & components
+- **Auth pages:** Sign in/up, password strength meter, errors inline
+- **Explorer:** Sidebar tree, main pane (grid/list), breadcrumbs, toolbar (New Folder, Upload, Download, Share, Delete), inline rename, drag-and-drop reorder/move
+- **Preview modals/pages:** Image lightbox, PDF viewer (PDF.js), audio player, video player
+- **Upload UI:** Queue with per-file progress, pause/resume, retries; background uploads
+- **Share dialog:** Create/update share link, copy button, expiry selector, password toggle
+- **Trash view:** Restore and purge actions
+- **Settings:** Theme, language (en/pt-BR), account, tokens (future)
+- **Toasts** for feedback, **Dialog** for confirm, **Skeletons** for loading
+
+## Security & reliability
+- Validate all inputs with Zod; sanitize filenames
+- Only allow safe MIME types; store detected MIME server-side (don’t trust client)
+- Generate `storageKey` as UUID paths (`ownerId/yyyy/mm/dd/uuid.ext`)
+- Set strong security headers (Helmet); CORS allowlist via env
+- JWT in httpOnly, secure cookies; CSRF-safe patterns
+- Rate-limit auth and upload init endpoints
+- Server supports **Range** for media; set `Accept-Ranges: bytes`
+- Optional ClamAV scan hook (env-gated, skip by default)
+- Audit critical actions
+
+## Theming & design
+- Tailwind + shadcn/ui with 3 themes: **Light**, **Dim**, **Pure Black**
+- Respect `prefers-color-scheme`; theme toggle persisted per user
+- Mobile: bottom toolbar, big touch targets, adaptive columns
+- Accessibility: keyboard navigation everywhere; ARIA; focus management
+
+## Developer experience
+- Include a **README** with:
+  - Features summary, screenshots/gifs
+  - ENV setup with examples:
+    ```
+    DATABASE_URL="file:./dev.db" # or postgres url
+    JWT_SECRET="change-me"
+    STORAGE_DRIVER="s3" # or "local"
+    S3_ENDPOINT=""
+    S3_REGION=""
+    S3_BUCKET=""
+    S3_ACCESS_KEY_ID=""
+    S3_SECRET_ACCESS_KEY=""
+    SHARE_BASE_URL="http://localhost:5173"
+    TRASH_TTL_DAYS=30
+    ```
+  - Commands: `pnpm i`, `pnpm dev` (concurrently run client/server), `pnpm build`, `pnpm start`
+- Prettier + ESLint configs; simple Vitest tests for utils and an API route
+- Seed script to create a demo user and sample folders/files (fake records)
+
+## Acceptance criteria
+- Upload 3+ large files concurrently with visible per-file progress; cancel and retry works
+- Preview opens appropriately for PDF/images/audio/video in-app
+- Range streaming verified by seeking inside long video/audio
+- Create/rename/move files & folders; drag-and-drop works; keyboard shortcuts work
+- Trash + restore works; share link with expiry+password works (test from incognito)
+- Search finds items; sort persists; theme toggle persists; mobile layout does not break
+- LCP under ~2.5s on typical Replit instance with cached assets
+
+Deliver the complete project in this Replit, wired end-to-end, with clear instructions to run.

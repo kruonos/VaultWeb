@@ -120,7 +120,10 @@ export function ShareDialog({ item, itemType, isOpen, onClose }: ShareDialogProp
 
   if (!item || !itemType) return null;
 
-  const itemName = "name" in item ? `${item.name}${(item as File).ext ? `.${(item as File).ext}` : ""}` : item.name;
+  const itemName =
+    itemType === "file"
+      ? `${item.name}${(item as File).ext ? `.${(item as File).ext}` : ""}`
+      : item.name;
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>

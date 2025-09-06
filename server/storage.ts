@@ -1,6 +1,6 @@
 import { users, folders, files, shareLinks, auditLogs, type User, type InsertUser, type Folder, type InsertFolder, type File, type InsertFile, type ShareLink, type InsertShareLink, type AuditLog, type InsertAuditLog } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, isNull, desc, like, or, inArray } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, like, or, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -37,11 +37,11 @@ export interface IStorage {
   restoreFromTrash(id: string, type: 'file' | 'folder'): Promise<void>;
   permanentlyDelete(id: string, type: 'file' | 'folder'): Promise<void>;
 
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({ 
@@ -66,10 +66,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
+    const [user] = (await db
       .insert(users)
       .values(insertUser)
-      .returning();
+      .returning()) as User[];
     return user;
   }
 
@@ -89,19 +89,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFolder(folder: InsertFolder & { ownerId: string }): Promise<Folder> {
-    const [newFolder] = await db
+    const [newFolder] = (await db
       .insert(folders)
       .values(folder)
-      .returning();
+      .returning()) as Folder[];
     return newFolder;
   }
 
   async updateFolder(id: string, updates: Partial<Folder>): Promise<Folder | undefined> {
-    const [folder] = await db
+    const [folder] = (await db
       .update(folders)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(folders.id, id))
-      .returning();
+      .returning()) as Folder[];
     return folder || undefined;
   }
 
@@ -128,19 +128,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFile(file: InsertFile & { ownerId: string }): Promise<File> {
-    const [newFile] = await db
+    const [newFile] = (await db
       .insert(files)
       .values(file)
-      .returning();
+      .returning()) as File[];
     return newFile;
   }
 
   async updateFile(id: string, updates: Partial<File>): Promise<File | undefined> {
-    const [file] = await db
+    const [file] = (await db
       .update(files)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(files.id, id))
-      .returning();
+      .returning()) as File[];
     return file || undefined;
   }
 
@@ -186,10 +186,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createShareLink(shareLink: InsertShareLink & { createdBy: string }): Promise<ShareLink> {
-    const [newShareLink] = await db
+    const [newShareLink] = (await db
       .insert(shareLinks)
       .values(shareLink)
-      .returning();
+      .returning()) as ShareLink[];
     return newShareLink;
   }
 
@@ -198,10 +198,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAuditLog(log: InsertAuditLog & { userId: string }): Promise<AuditLog> {
-    const [newLog] = await db
+    const [newLog] = (await db
       .insert(auditLogs)
       .values(log)
-      .returning();
+      .returning()) as AuditLog[];
     return newLog;
   }
 
@@ -212,18 +212,18 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  async getTrashItems(ownerId: string): Promise<{ files: File[]; folders: Folder[] }> {
+    async getTrashItems(ownerId: string): Promise<{ files: File[]; folders: Folder[] }> {
     const trashedFiles = await db.select().from(files).where(
       and(
         eq(files.ownerId, ownerId),
-        isNull(files.deletedAt) === false
+        isNotNull(files.deletedAt)
       )
     ).orderBy(desc(files.deletedAt));
 
     const trashedFolders = await db.select().from(folders).where(
       and(
         eq(folders.ownerId, ownerId),
-        isNull(folders.deletedAt) === false
+        isNotNull(folders.deletedAt)
       )
     ).orderBy(desc(folders.deletedAt));
 

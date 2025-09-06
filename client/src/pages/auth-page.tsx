@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Vault, Shield, Upload, Share, Search, Folder } from "lucide-react";
+import { FaGoogle } from "react-icons/fa";
+import { Separator } from "@/components/ui/separator";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,6 +60,10 @@ export default function AuthPage() {
 
   const onRegister = (data: RegisterForm) => {
     registerMutation.mutate(data);
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = "/auth/google";
   };
 
   return (
@@ -138,6 +144,29 @@ export default function AuthPage() {
                       </Button>
                     </form>
                   </Form>
+                  
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <Separator className="w-full" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">
+                          Or continue with
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <Button 
+                      variant="outline" 
+                      className="w-full" 
+                      onClick={handleGoogleLogin}
+                      data-testid="button-google-login"
+                    >
+                      <FaGoogle className="mr-2 h-4 w-4" />
+                      Sign in with Google
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -216,6 +245,29 @@ export default function AuthPage() {
                       </Button>
                     </form>
                   </Form>
+                  
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <Separator className="w-full" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">
+                          Or continue with
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <Button 
+                      variant="outline" 
+                      className="w-full" 
+                      onClick={handleGoogleLogin}
+                      data-testid="button-google-register"
+                    >
+                      <FaGoogle className="mr-2 h-4 w-4" />
+                      Sign up with Google
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

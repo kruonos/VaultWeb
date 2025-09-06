@@ -1,5 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -64,7 +65,7 @@ export function setupAuth(app: Express) {
       async (email, password, done) => {
         try {
           const user = await storage.getUserByEmail(email);
-          if (!user || !(await comparePasswords(password, user.passwordHash))) {
+          if (!user || !user.passwordHash || !(await comparePasswords(password, user.passwordHash))) {
             return done(null, false);
           }
           return done(null, user);
@@ -74,6 +75,60 @@ export function setupAuth(app: Express) {
       }
     )
   );
+
+  // Google OAuth Strategy
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    passport.use(
+      new GoogleStrategy(
+        {
+          clientID: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          callbackURL: "/auth/google/callback",
+        },
+        async (accessToken, refreshToken, profile, done) => {
+          try {
+            // Check if user already exists with this Google ID
+            let user = await storage.getUserByGoogleId(profile.id);
+            
+            if (user) {
+              return done(null, user);
+            }
+
+            // Check if user exists with same email
+            user = await storage.getUserByEmail(profile.emails?.[0]?.value || "");
+            
+            if (user) {
+              // Link Google account to existing user
+              // Note: In production, you might want to ask for confirmation
+              // For now, we'll automatically link if email matches
+              return done(null, user);
+            }
+
+            // Create new user
+            const newUser = await storage.createUser({
+              email: profile.emails?.[0]?.value || "",
+              name: profile.displayName || profile.name?.givenName || "Unknown",
+              googleId: profile.id,
+              provider: "google",
+            });
+
+            // Create audit log
+            await storage.createAuditLog({
+              userId: newUser.id,
+              action: "user_registered_google",
+              targetType: "user",
+              targetId: newUser.id,
+              meta: { email: newUser.email, provider: "google" },
+            });
+
+            return done(null, newUser);
+          } catch (error) {
+            return done(error);
+          }
+        }
+      )
+    );
+  }
 
   passport.serializeUser((user, done) => done(null, user.id));
   passport.deserializeUser(async (id: string, done) => {
@@ -191,4 +246,27 @@ export function setupAuth(app: Express) {
       role: req.user!.role,
     });
   });
+
+  // Google OAuth routes
+  app.get("/auth/google", 
+    passport.authenticate("google", { scope: ["profile", "email"] })
+  );
+
+  app.get("/auth/google/callback",
+    passport.authenticate("google", { failureRedirect: "/auth?error=google_failed" }),
+    async (req, res) => {
+      // Create audit log for successful login
+      if (req.user) {
+        await storage.createAuditLog({
+          userId: req.user.id,
+          action: "user_login_google",
+          targetType: "user",
+          targetId: req.user.id,
+          meta: { email: req.user.email, provider: "google" },
+        });
+      }
+      // Redirect to main app
+      res.redirect("/");
+    }
+  );
 }

@@ -7,9 +7,11 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"), // nullable for OAuth users
   name: text("name").notNull(),
   role: text("role").notNull().default("user"), // 'admin' | 'user'
+  googleId: text("google_id").unique(), // for Google OAuth
+  provider: text("provider").notNull().default("local"), // 'local' | 'google'
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -104,7 +106,12 @@ export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
   passwordHash: true,
   name: true,
+  googleId: true,
+  provider: true,
 });
+
+export const insertLocalUserSchema = insertUserSchema.omit({ googleId: true, provider: true });
+export const insertGoogleUserSchema = insertUserSchema.omit({ passwordHash: true });
 
 export const insertFolderSchema = createInsertSchema(folders).pick({
   name: true,

@@ -129,7 +129,11 @@ class LocalStorageService implements StorageService {
     return path.join(this.basePath, key);
   }
 
-  async uploadFile(key: string, buffer: Buffer): Promise<void> {
+  async uploadFile(
+    key: string,
+    buffer: Buffer,
+    _contentType: string,
+  ): Promise<void> {
     const filePath = this.getFilePath(key);
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
@@ -146,7 +150,10 @@ class LocalStorageService implements StorageService {
     await fs.unlink(filePath);
   }
 
-  async getSignedUploadUrl(key: string): Promise<string> {
+  async getSignedUploadUrl(
+    key: string,
+    _contentType: string,
+  ): Promise<string> {
     return `/api/upload/local/${key}`;
   }
 
@@ -154,7 +161,10 @@ class LocalStorageService implements StorageService {
     return `/api/files/download/${key}`;
   }
 
-  async createMultipartUpload(key: string): Promise<{ uploadId: string; urls: string[] }> {
+  async createMultipartUpload(
+    key: string,
+    _contentType: string,
+  ): Promise<{ uploadId: string; urls: string[] }> {
     const uploadId = randomUUID();
     const urls = Array.from({ length: 10 }, (_, i) => 
       `/api/upload/local/${key}/part/${i + 1}?uploadId=${uploadId}`
@@ -162,7 +172,11 @@ class LocalStorageService implements StorageService {
     return { uploadId, urls };
   }
 
-  async completeMultipartUpload(): Promise<void> {
+  async completeMultipartUpload(
+    _key: string,
+    _uploadId: string,
+    _parts: { ETag: string; PartNumber: number }[],
+  ): Promise<void> {
     // Local storage doesn't need multipart completion
   }
 }
